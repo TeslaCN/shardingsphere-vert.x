@@ -17,42 +17,44 @@ public class ShardingSphereConnection implements SqlConnection {
     
     @Override
     public SqlConnection prepare(final String sql, final Handler<AsyncResult<PreparedStatement>> handler) {
-        return null;
+        prepare(sql).onComplete(handler);
+        return this;
     }
     
     @Override
     public Future<PreparedStatement> prepare(final String sql) {
-        return null;
+        return Future.failedFuture(new UnsupportedOperationException());
     }
     
     @Override
     public SqlConnection prepare(final String sql, final PrepareOptions options, final Handler<AsyncResult<PreparedStatement>> handler) {
-        return null;
+        prepare(sql, options).onComplete(handler);
+        return this;
     }
     
     @Override
     public Future<PreparedStatement> prepare(final String sql, final PrepareOptions options) {
-        return null;
+        return Future.failedFuture(new UnsupportedOperationException());
     }
     
     @Override
     public SqlConnection exceptionHandler(final Handler<Throwable> handler) {
-        return null;
+        throw new UnsupportedOperationException();
     }
     
     @Override
     public SqlConnection closeHandler(final Handler<Void> handler) {
-        return null;
+        throw new UnsupportedOperationException();
     }
     
     @Override
     public void begin(final Handler<AsyncResult<Transaction>> handler) {
-        
+        begin().onComplete(handler);
     }
     
     @Override
     public Future<Transaction> begin() {
-        return null;
+        return Future.succeededFuture(new ShardingSphereTransaction());
     }
     
     @Override
@@ -62,17 +64,19 @@ public class ShardingSphereConnection implements SqlConnection {
     
     @Override
     public Query<RowSet<Row>> query(final String sql) {
-        return null;
+        throw new UnsupportedOperationException();
     }
     
     @Override
     public PreparedQuery<RowSet<Row>> preparedQuery(final String sql) {
-        return null;
+        throw new UnsupportedOperationException();
+//        return new ShardingSpherePreparedQuery(sql);
     }
     
     @Override
     public PreparedQuery<RowSet<Row>> preparedQuery(final String sql, final PrepareOptions options) {
-        return null;
+        throw new UnsupportedOperationException();
+//        return new ShardingSpherePreparedQuery(sql);
     }
     
     @Override
@@ -82,11 +86,11 @@ public class ShardingSphereConnection implements SqlConnection {
     
     @Override
     public Future<Void> close() {
-        return null;
+        return Future.succeededFuture();
     }
     
     @Override
     public DatabaseMetadata databaseMetadata() {
-        return null;
+        throw new UnsupportedOperationException();
     }
 }

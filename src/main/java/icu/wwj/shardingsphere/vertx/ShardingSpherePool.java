@@ -4,6 +4,7 @@ import io.vertx.core.AsyncResult;
 import io.vertx.core.Context;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
+import io.vertx.core.Vertx;
 import io.vertx.sqlclient.Pool;
 import io.vertx.sqlclient.PrepareOptions;
 import io.vertx.sqlclient.PreparedQuery;
@@ -11,11 +12,18 @@ import io.vertx.sqlclient.Query;
 import io.vertx.sqlclient.Row;
 import io.vertx.sqlclient.RowSet;
 import io.vertx.sqlclient.SqlConnection;
+import lombok.RequiredArgsConstructor;
+import org.apache.shardingsphere.mode.manager.ContextManager;
 
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 
+@RequiredArgsConstructor
 public class ShardingSpherePool implements Pool {
+    
+    private final Vertx vertx;
+    
+    private final ContextManager contextManager;
     
     private final AtomicInteger size = new AtomicInteger();
     
@@ -26,23 +34,22 @@ public class ShardingSpherePool implements Pool {
     
     @Override
     public Future<SqlConnection> getConnection() {
-        
-        return null;
+        return Future.succeededFuture(new ShardingSphereConnection());
     }
     
     @Override
     public Query<RowSet<Row>> query(final String sql) {
-        return null;
+        throw new UnsupportedOperationException();
     }
     
     @Override
     public PreparedQuery<RowSet<Row>> preparedQuery(final String sql) {
-        return null;
+        throw new UnsupportedOperationException();
     }
     
     @Override
     public PreparedQuery<RowSet<Row>> preparedQuery(final String sql, final PrepareOptions options) {
-        return null;
+        throw new UnsupportedOperationException();
     }
     
     @Override
