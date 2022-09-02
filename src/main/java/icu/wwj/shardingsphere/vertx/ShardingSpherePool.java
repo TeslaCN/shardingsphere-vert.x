@@ -34,7 +34,7 @@ public class ShardingSpherePool implements Pool {
     
     @Override
     public Future<SqlConnection> getConnection() {
-        return Future.succeededFuture(new ShardingSphereConnection());
+        return Future.succeededFuture(new ShardingSphereConnection(vertx, contextManager));
     }
     
     @Override

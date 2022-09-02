@@ -3,6 +3,7 @@ package icu.wwj.shardingsphere.vertx;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
+import io.vertx.core.Vertx;
 import io.vertx.sqlclient.PrepareOptions;
 import io.vertx.sqlclient.PreparedQuery;
 import io.vertx.sqlclient.PreparedStatement;
@@ -12,8 +13,20 @@ import io.vertx.sqlclient.RowSet;
 import io.vertx.sqlclient.SqlConnection;
 import io.vertx.sqlclient.Transaction;
 import io.vertx.sqlclient.spi.DatabaseMetadata;
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
+import org.apache.shardingsphere.infra.context.ConnectionContext;
+import org.apache.shardingsphere.mode.manager.ContextManager;
 
+@RequiredArgsConstructor
 public class ShardingSphereConnection implements SqlConnection {
+    
+    private final Vertx vertx;
+    
+    private final ContextManager contextManager;
+    
+    @Getter
+    private final ConnectionContext connectionContext = new ConnectionContext();
     
     @Override
     public SqlConnection prepare(final String sql, final Handler<AsyncResult<PreparedStatement>> handler) {
