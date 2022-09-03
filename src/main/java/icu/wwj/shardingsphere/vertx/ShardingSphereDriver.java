@@ -9,6 +9,7 @@ import io.vertx.sqlclient.spi.ConnectionFactory;
 import io.vertx.sqlclient.spi.Driver;
 import jdk.internal.joptsimple.internal.Strings;
 import lombok.SneakyThrows;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.shardingsphere.infra.config.database.impl.DataSourceProvidedDatabaseConfiguration;
 import org.apache.shardingsphere.infra.config.rule.RuleConfiguration;
 import org.apache.shardingsphere.infra.config.rule.scope.GlobalRuleConfiguration;
@@ -33,7 +34,23 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.stream.Collectors;
 
+@Slf4j
 public class ShardingSphereDriver implements Driver {
+    
+    static {
+        log.info("███████ ██   ██  █████  ██████  ██████  ██ ███    ██  ██████  ███████ ██████  ██   ██ ███████ ██████  ███████ \n" +
+                "██      ██   ██ ██   ██ ██   ██ ██   ██ ██ ████   ██ ██       ██      ██   ██ ██   ██ ██      ██   ██ ██      \n" +
+                "███████ ███████ ███████ ██████  ██   ██ ██ ██ ██  ██ ██   ███ ███████ ██████  ███████ █████   ██████  █████   \n" +
+                "     ██ ██   ██ ██   ██ ██   ██ ██   ██ ██ ██  ██ ██ ██    ██      ██ ██      ██   ██ ██      ██   ██ ██      \n" +
+                "███████ ██   ██ ██   ██ ██   ██ ██████  ██ ██   ████  ██████  ███████ ██      ██   ██ ███████ ██   ██ ███████ \n" +
+                "                                                                                                              \n" +
+                "                                                                                                              \n" +
+                "██    ██ ███████ ██████  ████████    ██   ██                                                                  \n" +
+                "██    ██ ██      ██   ██    ██        ██ ██                                                                   \n" +
+                "██    ██ █████   ██████     ██         ███                                                                    \n" +
+                " ██  ██  ██      ██   ██    ██        ██ ██                                                                   \n" +
+                "  ████   ███████ ██   ██    ██    ██ ██   ██                                                                  \n");
+    }
     
     private static final YamlRuleConfigurationSwapperEngine SWAPPER_ENGINE = new YamlRuleConfigurationSwapperEngine();
     
@@ -68,12 +85,12 @@ public class ShardingSphereDriver implements Driver {
     
     @Override
     public ConnectionFactory createConnectionFactory(final Vertx vertx, final SqlConnectOptions database) {
-        return null;
+        throw new UnsupportedOperationException();
     }
     
     @Override
     public SqlConnectOptions parseConnectionUri(final String uri) {
-        return null;
+        throw new UnsupportedOperationException();
     }
     
     @Override

@@ -14,11 +14,9 @@ import io.vertx.sqlclient.SqlConnection;
 import io.vertx.sqlclient.Transaction;
 import io.vertx.sqlclient.spi.DatabaseMetadata;
 import lombok.Getter;
-import lombok.RequiredArgsConstructor;
 import org.apache.shardingsphere.infra.context.ConnectionContext;
 import org.apache.shardingsphere.mode.manager.ContextManager;
 
-@RequiredArgsConstructor
 public class ShardingSphereConnection implements SqlConnection {
     
     private final Vertx vertx;
@@ -26,7 +24,16 @@ public class ShardingSphereConnection implements SqlConnection {
     private final ContextManager contextManager;
     
     @Getter
+    private final VertxConnectionManager connectionManager;
+    
+    @Getter
     private final ConnectionContext connectionContext = new ConnectionContext();
+    
+    public ShardingSphereConnection(final Vertx vertx, final ContextManager contextManager) {
+        this.vertx = vertx;
+        this.contextManager = contextManager;
+        connectionManager = new VertxConnectionManager(vertx, contextManager);
+    }
     
     @Override
     public SqlConnection prepare(final String sql, final Handler<AsyncResult<PreparedStatement>> handler) {
