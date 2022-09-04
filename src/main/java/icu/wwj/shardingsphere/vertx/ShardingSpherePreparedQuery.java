@@ -13,6 +13,7 @@ import io.vertx.sqlclient.Tuple;
 import lombok.SneakyThrows;
 import org.apache.shardingsphere.infra.binder.QueryContext;
 import org.apache.shardingsphere.infra.binder.SQLStatementContextFactory;
+import org.apache.shardingsphere.infra.binder.aware.ParameterAware;
 import org.apache.shardingsphere.infra.binder.statement.SQLStatementContext;
 import org.apache.shardingsphere.infra.context.kernel.KernelProcessor;
 import org.apache.shardingsphere.infra.database.type.DatabaseTypeEngine;
@@ -28,7 +29,9 @@ import org.apache.shardingsphere.infra.executor.sql.execute.result.update.Update
 import org.apache.shardingsphere.infra.executor.sql.prepare.driver.DriverExecutionPrepareEngine;
 import org.apache.shardingsphere.infra.executor.sql.prepare.driver.vertx.VertxExecutionContext;
 import org.apache.shardingsphere.infra.merge.MergeEngine;
+import org.apache.shardingsphere.infra.merge.result.MergedResult;
 import org.apache.shardingsphere.infra.parser.ShardingSphereSQLParserEngine;
+import org.apache.shardingsphere.infra.rule.ShardingSphereRule;
 import org.apache.shardingsphere.mode.metadata.MetaDataContexts;
 import org.apache.shardingsphere.parser.rule.SQLParserRule;
 import org.apache.shardingsphere.sql.parser.sql.common.statement.SQLStatement;
@@ -49,22 +52,19 @@ public class ShardingSpherePreparedQuery implements PreparedQuery<RowSet<Row>> {
     
     private final MetaDataContexts metaDataContexts;
     
-    private final String sql;
-    
-    private final SQLStatement sqlStatement;
-    
     private final SQLStatementContext<?> sqlStatementContext;
     
     private final QueryContext queryContext;
     
+    private Map<String, Integer> columnLabelAndIndexMap;
+    
     public ShardingSpherePreparedQuery(final ShardingSphereConnection connection, final MetaDataContexts metaDataContexts, final String sql) {
         this.connection = connection;
         this.metaDataContexts = metaDataContexts;
-        this.sql = sql;
         SQLParserRule sqlParserRule = metaDataContexts.getMetaData().getGlobalRuleMetaData().getSingleRule(SQLParserRule.class);
         ShardingSphereSQLParserEngine sqlParserEngine = sqlParserRule.getSQLParserEngine(
                 DatabaseTypeEngine.getTrunkDatabaseTypeName(metaDataContexts.getMetaData().getDatabase("logic_db").getResource().getDatabaseType()));
-        sqlStatement = sqlParserEngine.parse(sql, true);
+        SQLStatement sqlStatement = sqlParserEngine.parse(sql, true);
         sqlStatementContext = SQLStatementContextFactory.newInstance(metaDataContexts.getMetaData().getDatabases(), sqlStatement, "logic_db");
         queryContext = new QueryContext(sqlStatementContext, sql, new ArrayList<>());
     }
@@ -77,9 +77,11 @@ public class ShardingSpherePreparedQuery implements PreparedQuery<RowSet<Row>> {
     @SneakyThrows(SQLException.class)
     @Override
     public Future<RowSet<Row>> execute(final Tuple tuple) {
+        setupParameters(tuple);
         ExecutionContext executionContext = createExecutionContext();
+        Collection<ShardingSphereRule> rules = metaDataContexts.getMetaData().getDatabase("logic_db").getRuleMetaData().getRules();
         DriverExecutionPrepareEngine<VertxExecutionUnit, Future<? extends SqlClient>> prepareEngine = new DriverExecutionPrepareEngine<>(
-                "Vert.x", 1, connection.getConnectionManager(), UnsupportedExecutorVertxStatementManager.INSTANCE, new VertxExecutionContext(), rules, "PostgreSQL");
+                "Vert.x", 1, connection.getConnectionManager(), UnsupportedExecutorVertxStatementManager.INSTANCE, new VertxExecutionContext(), rules, sqlStatementContext.getDatabaseType());
         ExecutionGroupContext<VertxExecutionUnit> executionGroupContext = prepareEngine.prepare(executionContext.getRouteContext(), executionContext.getExecutionUnits());
         List<Future<ExecuteResult>> executeResults = ShardingSphereVertxExecutor.execute(executionGroupContext, new ExecutorCallback<VertxExecutionUnit, Future<ExecuteResult>>() {
             
@@ -95,22 +97,52 @@ public class ShardingSpherePreparedQuery implements PreparedQuery<RowSet<Row>> {
             
             private ExecuteResult handleResult(final RowSet<Row> rowSet) {
                 return null == rowSet.columnDescriptors() ? new UpdateResult(rowSet.rowCount(), 0L)
-                        : new VertxQueryResult(new VertxQueryResultMetaData(rowSet.columnDescriptors()), rowSet.iterator());
+                        : new VertxQueryResult(new VertxQueryResultMetaData(rowSet.columnDescriptors(), rowSet.size()), rowSet.iterator());
             }
         });
-        CompositeFuture.all((List) executeResults).map(future -> {
-            if (future.list().get(0) instanceof UpdateResult) {
-                
+        return CompositeFuture.all((List) executeResults).map(future -> {
+            List results = future.list();
+            if (results.get(0) instanceof UpdateResult) {
+                return fromUpdateResult(results);
             }
             MergeEngine mergeEngine = new MergeEngine(metaDataContexts.getMetaData().getDatabase("logic_db"),
                     metaDataContexts.getMetaData().getProps(), connection.getConnectionContext());
             try {
-                return mergeEngine.merge(future.list(), executionContext.getSqlStatementContext());
+                return fromMergeResult(results, mergeEngine.merge(results, executionContext.getSqlStatementContext()));
             } catch (SQLException e) {
                 throw new RuntimeException(e);
             }
         });
-        return null;
+    }
+    
+    private RowSet<Row> fromUpdateResult(final List<UpdateResult> updateResults) {
+        int updated = 0;
+        for (UpdateResult each : updateResults) {
+            updated += each.getUpdateCount();
+        }
+        return new ShardingSphereUpdateRowSet(updated);
+    }
+    
+    private RowSet<Row> fromMergeResult(final List<QueryResult> queryResults, final MergedResult mergedResult) {
+        Map<String, Integer> columnLabelAndIndexMap = null != this.columnLabelAndIndexMap ? this.columnLabelAndIndexMap
+                : (this.columnLabelAndIndexMap = RowSetUtil.createColumnLabelAndIndexMap(queryResults.get(0).getMetaData()));
+        int size = 0;
+        for (QueryResult each : queryResults) {
+            size += ((VertxQueryResultMetaData)each.getMetaData()).getRowCount();
+        }
+        return new ShardingSphereRowSet(queryResults.get(0),columnLabelAndIndexMap, mergedResult, size);
+    }
+    
+    private void setupParameters(final Tuple tuple) {
+        List<Object> parameters = new ArrayList<>(tuple.size());
+        for (int i = 0; i < tuple.size(); i++) {
+            parameters.add(tuple.getValue(i));
+        }
+        queryContext.getParameters().clear();
+        queryContext.getParameters().addAll(parameters);
+        if (sqlStatementContext instanceof ParameterAware) {
+            ((ParameterAware) sqlStatementContext).setUpParameters(parameters);
+        }
     }
     
     private ExecutionContext createExecutionContext() {

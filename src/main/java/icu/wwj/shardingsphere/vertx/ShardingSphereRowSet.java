@@ -2,54 +2,94 @@ package icu.wwj.shardingsphere.vertx;
 
 import io.vertx.sqlclient.PropertyKind;
 import io.vertx.sqlclient.Row;
+import io.vertx.sqlclient.RowIterator;
 import io.vertx.sqlclient.RowSet;
-import io.vertx.sqlclient.SqlResult;
 import io.vertx.sqlclient.desc.ColumnDescriptor;
+import lombok.SneakyThrows;
+import org.apache.shardingsphere.infra.executor.sql.execute.result.query.QueryResult;
+import org.apache.shardingsphere.infra.executor.sql.execute.result.query.QueryResultMetaData;
+import org.apache.shardingsphere.infra.merge.result.MergedResult;
 
-import java.util.Iterator;
+import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
-public class ShardingSphereRowSet implements Iterable<Row>, SqlResult<RowSet<Row>> {
+public class ShardingSphereRowSet implements RowSet<Row> {
     
-    private List<RowSet<Row>> rowSets;
+    private final QueryResult queryResultSample;
+    
+    private final Map<String, Integer> columnLabelAndIndexMap;
+    
+    private final MergedResult mergedResult;
+    
+    private final int size;
+    
+    private final RowIterator<Row> rowIterator;
+    
+    public ShardingSphereRowSet(final QueryResult queryResultSample, final Map<String, Integer> columnLabelAndIndexMap, final MergedResult mergedResult, final int size) {
+        this.queryResultSample = queryResultSample;
+        this.columnLabelAndIndexMap = columnLabelAndIndexMap;
+        this.mergedResult = mergedResult;
+        this.size = size;
+        rowIterator = new RowIterator<Row>() {
+            
+            @SneakyThrows(SQLException.class)
+            @Override
+            public boolean hasNext() {
+                return mergedResult.next();
+            }
+            
+            @Override
+            public Row next() {
+                return new ShardingSphereRow(queryResultSample, columnLabelAndIndexMap, mergedResult);
+            }
+        };
+    }
     
     @Override
     public int rowCount() {
         return 0;
     }
     
+    @SneakyThrows(SQLException.class)
     @Override
     public List<String> columnsNames() {
-        return null;
+        QueryResultMetaData metaData = queryResultSample.getMetaData();
+        List<String> result = new ArrayList<>(metaData.getColumnCount());
+        for (int i = 1; i <= metaData.getColumnCount(); i++) {
+            result.add(metaData.getColumnName(i));
+        }
+        return result;
     }
     
     @Override
     public List<ColumnDescriptor> columnDescriptors() {
-        return null;
+        throw new UnsupportedOperationException();
     }
     
     @Override
     public int size() {
-        return 0;
+        return size;
     }
     
     @Override
     public <V> V property(final PropertyKind<V> propertyKind) {
-        return null;
+        throw new UnsupportedOperationException();
     }
     
     @Override
     public RowSet<Row> value() {
-        return null;
+        return this;
     }
     
     @Override
-    public SqlResult<RowSet<Row>> next() {
-        return null;
+    public RowSet<Row> next() {
+        throw new UnsupportedOperationException();
     }
     
     @Override
-    public Iterator<Row> iterator() {
-        return null;
+    public RowIterator<Row> iterator() {
+        return rowIterator;
     }
 }

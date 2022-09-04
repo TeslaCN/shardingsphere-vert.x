@@ -1,6 +1,7 @@
 package icu.wwj.shardingsphere.vertx;
 
 import io.vertx.sqlclient.desc.ColumnDescriptor;
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import org.apache.shardingsphere.infra.executor.sql.execute.result.query.QueryResultMetaData;
 
@@ -10,6 +11,12 @@ import java.util.List;
 public class VertxQueryResultMetaData implements QueryResultMetaData {
     
     private final List<ColumnDescriptor> columnDescriptors;
+    
+    /**
+     * TODO Temporary solution. This field should not be appeared here.
+     */
+    @Getter
+    private final int rowCount;
     
     @Override
     public int getColumnCount() {

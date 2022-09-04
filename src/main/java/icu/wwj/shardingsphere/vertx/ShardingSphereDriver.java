@@ -1,5 +1,6 @@
 package icu.wwj.shardingsphere.vertx;
 
+import com.google.common.base.Strings;
 import io.vertx.core.Vertx;
 import io.vertx.core.impl.CloseFuture;
 import io.vertx.sqlclient.Pool;
@@ -7,7 +8,6 @@ import io.vertx.sqlclient.PoolOptions;
 import io.vertx.sqlclient.SqlConnectOptions;
 import io.vertx.sqlclient.spi.ConnectionFactory;
 import io.vertx.sqlclient.spi.Driver;
-import jdk.internal.joptsimple.internal.Strings;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.shardingsphere.infra.config.database.impl.DataSourceProvidedDatabaseConfiguration;

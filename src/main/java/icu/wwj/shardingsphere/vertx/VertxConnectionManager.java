@@ -43,6 +43,7 @@ public class VertxConnectionManager implements ExecutorVertxConnectionManager {
     }
     
     private Pool createPool(final String dataSourceName) {
+        // TODO Support other DataSource
         HikariDataSource dataSource = (HikariDataSource) contextManager.getDataSourceMap("logic_db").get(dataSourceName);
         URI uri = URI.create(dataSource.getJdbcUrl().replace("jdbc:", ""));
         if (!"postgresql".equals(uri.getScheme())) {

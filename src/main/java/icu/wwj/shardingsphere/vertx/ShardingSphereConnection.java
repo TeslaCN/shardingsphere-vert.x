@@ -74,7 +74,7 @@ public class ShardingSphereConnection implements SqlConnection {
     
     @Override
     public Future<Transaction> begin() {
-        return Future.succeededFuture(new ShardingSphereTransaction());
+        return Future.succeededFuture(new ShardingSphereTransaction(this));
     }
     
     @Override
@@ -89,14 +89,12 @@ public class ShardingSphereConnection implements SqlConnection {
     
     @Override
     public PreparedQuery<RowSet<Row>> preparedQuery(final String sql) {
-        throw new UnsupportedOperationException();
-//        return new ShardingSpherePreparedQuery(sql);
+        return new ShardingSpherePreparedQuery(this, contextManager.getMetaDataContexts(), sql);
     }
     
     @Override
     public PreparedQuery<RowSet<Row>> preparedQuery(final String sql, final PrepareOptions options) {
-        throw new UnsupportedOperationException();
-//        return new ShardingSpherePreparedQuery(sql);
+        return new ShardingSpherePreparedQuery(this, contextManager.getMetaDataContexts(), sql);
     }
     
     @Override
