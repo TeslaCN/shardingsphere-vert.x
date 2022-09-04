@@ -29,10 +29,12 @@ public class ShardingSphereConnection implements SqlConnection {
     @Getter
     private final ConnectionContext connectionContext = new ConnectionContext();
     
+    private final ShardingSphereTransaction transaction = new ShardingSphereTransaction(this);
+    
     public ShardingSphereConnection(final Vertx vertx, final ContextManager contextManager) {
         this.vertx = vertx;
         this.contextManager = contextManager;
-        connectionManager = new VertxConnectionManager(vertx, contextManager);
+        connectionManager = new VertxConnectionManager(vertx, contextManager, transaction);
     }
     
     @Override
@@ -74,7 +76,7 @@ public class ShardingSphereConnection implements SqlConnection {
     
     @Override
     public Future<Transaction> begin() {
-        return Future.succeededFuture(new ShardingSphereTransaction(this));
+        return transaction.begin();
     }
     
     @Override

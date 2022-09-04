@@ -9,13 +9,13 @@ import io.vertx.pgclient.PgPool;
 import io.vertx.sqlclient.Pool;
 import io.vertx.sqlclient.PoolOptions;
 import io.vertx.sqlclient.SqlClient;
+import io.vertx.sqlclient.SqlConnection;
 import lombok.RequiredArgsConstructor;
 import org.apache.shardingsphere.infra.executor.sql.execute.engine.ConnectionMode;
 import org.apache.shardingsphere.infra.executor.sql.prepare.driver.vertx.ExecutorVertxConnectionManager;
 import org.apache.shardingsphere.mode.manager.ContextManager;
 
 import java.net.URI;
-import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -27,17 +27,26 @@ public class VertxConnectionManager implements ExecutorVertxConnectionManager {
     
     private final Map<String, Pool> poolMap = new ConcurrentHashMap<>();
     
+    private final Map<String, List<SqlConnection>> cachedConnections = new ConcurrentHashMap<>();
+    
     private final Vertx vertx;
     
     private final ContextManager contextManager;
     
+    private final ShardingSphereTransaction transaction;
+    
     @Override
-    public List<Future<? extends SqlClient>> getConnections(final String dataSourceName, final int connectionSize, final ConnectionMode connectionMode) throws SQLException {
+    public List<Future<? extends SqlClient>> getConnections(final String dataSourceName, final int connectionSize, final ConnectionMode connectionMode) {
         List<Future<? extends SqlClient>> result = new ArrayList<>(connectionSize);
-        // Those use Vert.x may use higher version Java instead of 8
+        // TODO Get connections from cache if available
+        // TODO JDK-8161372 may occur here. But those use Vert.x may use higher version Java instead of 8.
         Pool pool = poolMap.computeIfAbsent(dataSourceName, this::createPool);
         for (int i = 0; i < connectionSize; i++) {
-            result.add(pool.getConnection());
+            Future<SqlConnection> connection = pool.getConnection().onSuccess(sqlConnection -> cachedConnections.computeIfAbsent(dataSourceName, unused -> new ArrayList<>()).add(sqlConnection));
+            if (TransactionStatus.IN_TRANSACTION == transaction.getTransactionStatus()) {
+                connection.compose(SqlConnection::begin).onSuccess(transaction::addTransaction);
+            }
+            result.add(connection);
         }
         return result;
     }
