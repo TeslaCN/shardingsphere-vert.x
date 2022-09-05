@@ -101,7 +101,7 @@ public class ShardingSphereDriver implements Driver {
     @Override
     public SqlConnectOptions parseConnectionUri(final String uri) {
         if (!uri.startsWith(URI_PREFIX_SHARDINGSPHERE)) {
-            throw new IllegalArgumentException("URI should be prefixed with shardingsphere:");
+            return null;
         }
         String path = uri.substring(URI_PREFIX_SHARDINGSPHERE.length());
         byte[] result;
