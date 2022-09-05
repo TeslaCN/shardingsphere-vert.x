@@ -10,17 +10,20 @@ import io.vertx.sqlclient.RowSet;
 import io.vertx.sqlclient.SqlClient;
 import io.vertx.sqlclient.SqlResult;
 import io.vertx.sqlclient.Tuple;
+import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import org.apache.shardingsphere.infra.binder.QueryContext;
 import org.apache.shardingsphere.infra.binder.SQLStatementContextFactory;
 import org.apache.shardingsphere.infra.binder.aware.ParameterAware;
 import org.apache.shardingsphere.infra.binder.statement.SQLStatementContext;
+import org.apache.shardingsphere.infra.config.props.ConfigurationPropertyKey;
 import org.apache.shardingsphere.infra.context.kernel.KernelProcessor;
 import org.apache.shardingsphere.infra.database.type.DatabaseTypeEngine;
 import org.apache.shardingsphere.infra.executor.check.SQLCheckEngine;
 import org.apache.shardingsphere.infra.executor.kernel.model.ExecutionGroupContext;
 import org.apache.shardingsphere.infra.executor.kernel.model.ExecutorCallback;
 import org.apache.shardingsphere.infra.executor.sql.context.ExecutionContext;
+import org.apache.shardingsphere.infra.executor.sql.context.ExecutionUnit;
 import org.apache.shardingsphere.infra.executor.sql.execute.engine.driver.vertx.VertxExecutionUnit;
 import org.apache.shardingsphere.infra.executor.sql.execute.result.ExecuteResult;
 import org.apache.shardingsphere.infra.executor.sql.execute.result.query.QueryResult;
@@ -39,8 +42,12 @@ import org.apache.shardingsphere.sql.parser.sql.common.statement.SQLStatement;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collector;
 
@@ -52,6 +59,8 @@ public class ShardingSpherePreparedQuery implements PreparedQuery<RowSet<Row>> {
     
     private final MetaDataContexts metaDataContexts;
     
+    private final String sql;
+    
     private final SQLStatementContext<?> sqlStatementContext;
     
     private final QueryContext queryContext;
@@ -61,6 +70,7 @@ public class ShardingSpherePreparedQuery implements PreparedQuery<RowSet<Row>> {
     public ShardingSpherePreparedQuery(final ShardingSphereConnection connection, final MetaDataContexts metaDataContexts, final String sql) {
         this.connection = connection;
         this.metaDataContexts = metaDataContexts;
+        this.sql = sql;
         SQLParserRule sqlParserRule = metaDataContexts.getMetaData().getGlobalRuleMetaData().getSingleRule(SQLParserRule.class);
         ShardingSphereSQLParserEngine sqlParserEngine = sqlParserRule.getSQLParserEngine(
                 DatabaseTypeEngine.getTrunkDatabaseTypeName(metaDataContexts.getMetaData().getDatabase("logic_db").getResource().getDatabaseType()));
@@ -160,9 +170,90 @@ public class ShardingSpherePreparedQuery implements PreparedQuery<RowSet<Row>> {
         executeBatch(batch).onComplete(handler);
     }
     
+    @SneakyThrows(SQLException.class)
     @Override
     public Future<RowSet<Row>> executeBatch(final List<Tuple> batch) {
-        throw new UnsupportedOperationException();
+        if (null == batch || batch.isEmpty()) {
+            return Future.failedFuture(new IllegalArgumentException("Empty batch"));
+        }
+        Map<ExecutionUnit, List<Tuple>> executionUnitParameters = new HashMap<>();
+        Iterator<Tuple> tupleIterator = batch.iterator();
+        Tuple tuple = tupleIterator.next();
+        List<Object> firstGroupOfParameter = fromTuple(tuple);
+        if (sqlStatementContext instanceof ParameterAware) {
+            ((ParameterAware) sqlStatementContext).setUpParameters(firstGroupOfParameter);
+        }
+        ExecutionContext executionContext = createExecutionContext(new QueryContext(sqlStatementContext, sql, firstGroupOfParameter));
+        for (ExecutionUnit each : executionContext.getExecutionUnits()) {
+            executionUnitParameters.computeIfAbsent(each, unused -> new LinkedList<>()).add(tuple);
+        }
+        while (tupleIterator.hasNext()) {
+            tuple = tupleIterator.next();
+            List<Object> eachGroupOfParameter = fromTuple(tuple);
+            if (sqlStatementContext instanceof ParameterAware) {
+                ((ParameterAware) sqlStatementContext).setUpParameters(eachGroupOfParameter);
+            }
+            ExecutionContext eachExecutionContext = createExecutionContext(new QueryContext(sqlStatementContext, sql, eachGroupOfParameter));
+            for (ExecutionUnit each : eachExecutionContext.getExecutionUnits()) {
+                executionUnitParameters.computeIfAbsent(each, unused -> new LinkedList<>()).add(tuple);
+            }
+        }
+        ExecutionGroupContext<VertxExecutionUnit> executionGroupContext = addBatchedParametersToPreparedStatements(executionContext, executionUnitParameters.keySet());
+        return executeBatchedPreparedStatements(executionGroupContext, executionUnitParameters);
+    }
+    
+    private List<Object> fromTuple(final Tuple tuple) {
+        List<Object> result = new ArrayList<>(tuple.size());
+        for (int i = 0; i < tuple.size(); i++) {
+            result.add(tuple.getValue(i));
+        }
+        return result;
+    }
+    
+    private ExecutionContext createExecutionContext(final QueryContext queryContext) {
+        String databaseName = "logic_db";
+        SQLCheckEngine.check(queryContext.getSqlStatementContext(), queryContext.getParameters(),
+                metaDataContexts.getMetaData().getDatabase(databaseName).getRuleMetaData().getRules(),
+                databaseName, metaDataContexts.getMetaData().getDatabases(), null);
+        return kernelProcessor.generateExecutionContext(queryContext, metaDataContexts.getMetaData().getDatabase(databaseName),
+                metaDataContexts.getMetaData().getGlobalRuleMetaData(), metaDataContexts.getMetaData().getProps(), connection.getConnectionContext());
+    }
+    
+    private ExecutionGroupContext<VertxExecutionUnit> addBatchedParametersToPreparedStatements(final ExecutionContext executionContext, final Set<ExecutionUnit> executionUnits) throws SQLException {
+        Collection<ShardingSphereRule> rules = metaDataContexts.getMetaData().getDatabase("logic_db").getRuleMetaData().getRules();
+        DriverExecutionPrepareEngine<VertxExecutionUnit, Future<? extends SqlClient>> prepareEngine = new DriverExecutionPrepareEngine<>(
+                "Vert.x", metaDataContexts.getMetaData().getProps().<Integer>getValue(ConfigurationPropertyKey.MAX_CONNECTIONS_SIZE_PER_QUERY),
+                connection.getConnectionManager(), UnsupportedExecutorVertxStatementManager.INSTANCE, new VertxExecutionContext(), rules, sqlStatementContext.getDatabaseType());
+        return prepareEngine.prepare(executionContext.getRouteContext(), executionUnits);
+    }
+    
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private Future<RowSet<Row>> executeBatchedPreparedStatements(final ExecutionGroupContext<VertxExecutionUnit> executionGroupContext, final Map<ExecutionUnit, List<Tuple>> executionUnitParameters) {
+        ExecutorCallback<VertxExecutionUnit, Future<ExecuteResult>> callback = new BatchedInsertsVertxExecutorCallback(executionUnitParameters);
+        List futures = ShardingSphereVertxExecutor.execute(executionGroupContext, callback);
+        return CompositeFuture.all(futures).map(rowSets -> {
+            int result = 0;
+            for (UpdateResult each : rowSets.<UpdateResult>list()) {
+                result += each.getUpdateCount();
+            }
+            return new ShardingSphereUpdateRowSet(result);
+        });
+    }
+    
+    @RequiredArgsConstructor
+    private static class BatchedInsertsVertxExecutorCallback implements ExecutorCallback<VertxExecutionUnit, Future<ExecuteResult>> {
+        
+        private final Map<ExecutionUnit, List<Tuple>> executionUnitParameters;
+        
+        @Override
+        public Collection<Future<ExecuteResult>> execute(final Collection<VertxExecutionUnit> inputs, final boolean isTrunkThread, final Map<String, Object> dataMap) throws SQLException {
+            List<Future<ExecuteResult>> result = new ArrayList<>(inputs.size());
+            for (VertxExecutionUnit unit : inputs) {
+                List<Tuple> tuples = executionUnitParameters.get(unit.getExecutionUnit());
+                result.add(unit.getStorageResource().compose(pq -> pq.executeBatch(tuples)).map(r -> new UpdateResult(r.rowCount(), 0)));
+            }
+            return result;
+        }
     }
     
     @Override
