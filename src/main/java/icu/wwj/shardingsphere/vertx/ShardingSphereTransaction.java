@@ -4,7 +4,6 @@ import io.vertx.core.AsyncResult;
 import io.vertx.core.CompositeFuture;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
-import io.vertx.core.impl.NoStackTraceThrowable;
 import io.vertx.sqlclient.Transaction;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
@@ -46,10 +45,10 @@ public class ShardingSphereTransaction implements Transaction {
         for (Transaction each : openedTransactions) {
             commitFutures.add(each.rollback());
         }
-        return CompositeFuture.all(commitFutures).eventually(unused -> {
+        return CompositeFuture.all(commitFutures).compose(unused -> connection.getConnectionManager().clearCachedConnections()).eventually(unused -> {
             openedTransactions.clear();
             return Future.succeededFuture();
-        }).mapEmpty();
+        });
     }
     
     @Override
@@ -66,10 +65,10 @@ public class ShardingSphereTransaction implements Transaction {
         for (Transaction each : openedTransactions) {
             rollbackFutures.add(each.rollback());
         }
-        return CompositeFuture.all(rollbackFutures).eventually(unused -> {
+        return CompositeFuture.all(rollbackFutures).compose(unused -> connection.getConnectionManager().clearCachedConnections()).eventually(unused -> {
             openedTransactions.clear();
             return Future.succeededFuture();
-        }).mapEmpty();
+        });
     }
     
     @Override
