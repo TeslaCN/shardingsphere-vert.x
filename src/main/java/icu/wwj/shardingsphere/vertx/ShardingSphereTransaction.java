@@ -61,6 +61,7 @@ public class ShardingSphereTransaction implements Transaction {
         if (TransactionStatus.NOT_IN_TRANSACTION == status.get()) {
             return Future.failedFuture(new InvalidTransactionStatusException("Cannot rollback transaction, current status is " + status.get().name()));
         }
+        status.set(TransactionStatus.NOT_IN_TRANSACTION);
         List<Future> rollbackFutures = new ArrayList<>(openedTransactions.size());
         for (Transaction each : openedTransactions) {
             rollbackFutures.add(each.rollback());
