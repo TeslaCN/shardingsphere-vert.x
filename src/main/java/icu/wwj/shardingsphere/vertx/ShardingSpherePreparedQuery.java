@@ -74,6 +74,7 @@ public class ShardingSpherePreparedQuery implements PreparedQuery<RowSet<Row>> {
         execute(tuple).onComplete(handler);
     }
     
+    @SuppressWarnings({"unchecked", "rawtypes"})
     @SneakyThrows(SQLException.class)
     @Override
     public Future<RowSet<Row>> execute(final Tuple tuple) {
