@@ -19,29 +19,31 @@ public class ShardingSphereRowSet implements RowSet<Row> {
     
     private final QueryResult queryResultSample;
     
-    private final Map<String, Integer> columnLabelAndIndexMap;
-    
-    private final MergedResult mergedResult;
-    
     private final int size;
     
     private final RowIterator<Row> rowIterator;
     
     public ShardingSphereRowSet(final QueryResult queryResultSample, final Map<String, Integer> columnLabelAndIndexMap, final MergedResult mergedResult, final int size) {
         this.queryResultSample = queryResultSample;
-        this.columnLabelAndIndexMap = columnLabelAndIndexMap;
-        this.mergedResult = mergedResult;
         this.size = size;
         rowIterator = new RowIterator<Row>() {
-            
+            // TODO This is not a proper implementation because ShardingSphere is too coupled with JDBC to implement this interface correctly for now.
+    
+            private boolean hasNextInvoked = false;
+    
             @SneakyThrows(SQLException.class)
             @Override
             public boolean hasNext() {
+                hasNextInvoked = true;
                 return mergedResult.next();
             }
-            
+    
+            @SneakyThrows(SQLException.class)
             @Override
             public Row next() {
+                if (!hasNextInvoked) {
+                    mergedResult.next();
+                }
                 return new ShardingSphereRow(queryResultSample, columnLabelAndIndexMap, mergedResult);
             }
         };

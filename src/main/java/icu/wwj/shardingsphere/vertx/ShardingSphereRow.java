@@ -34,7 +34,7 @@ public class ShardingSphereRow implements Row {
     @SneakyThrows(SQLException.class)
     @Override
     public Object getValue(final int pos) {
-        return mergedResult.getValue(pos - 1, Object.class);
+        return mergedResult.getValue(pos, Object.class);
     }
     
     @Override
