@@ -25,6 +25,11 @@ import org.apache.shardingsphere.mode.manager.ContextManagerBuilderFactory;
 import org.apache.shardingsphere.mode.manager.ContextManagerBuilderParameter;
 
 import javax.sql.DataSource;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.sql.SQLException;
 import java.util.Collection;
 import java.util.Collections;
@@ -36,6 +41,10 @@ import java.util.stream.Collectors;
 
 @Slf4j
 public class ShardingSphereDriver implements Driver {
+    
+    private static final String URI_PREFIX_SHARDINGSPHERE = "shardingsphere:";
+    
+    private static final String CLASSPATH_PREFIX = "classpath:";
     
     static {
         log.info("███████ ██   ██  █████  ██████  ██████  ██ ███    ██  ██████  ███████ ██████  ██   ██ ███████ ██████  ███████ \n" +
@@ -88,9 +97,31 @@ public class ShardingSphereDriver implements Driver {
         throw new UnsupportedOperationException();
     }
     
+    @SneakyThrows(IOException.class)
     @Override
     public SqlConnectOptions parseConnectionUri(final String uri) {
-        throw new UnsupportedOperationException();
+        if (!uri.startsWith(URI_PREFIX_SHARDINGSPHERE)) {
+            throw new IllegalArgumentException("URI should be prefixed with shardingsphere:");
+        }
+        String path = uri.substring(URI_PREFIX_SHARDINGSPHERE.length());
+        byte[] result;
+        if (path.startsWith(CLASSPATH_PREFIX)) {
+            String classpath = path.substring(CLASSPATH_PREFIX.length());
+            InputStream in = ShardingSphereDriver.class.getResourceAsStream(classpath);
+            if (null == in) {
+                throw new FileNotFoundException(CLASSPATH_PREFIX + classpath);
+            }
+            result = readInputStream(in);
+        } else {
+            result = Files.readAllBytes(Paths.get(path));
+        }
+        return new ShardingSphereOptions(result);
+    }
+    
+    private byte[] readInputStream(final InputStream in) throws IOException {
+        byte[] result = new byte[in.available()];
+        in.read(result);
+        return result;
     }
     
     @Override
