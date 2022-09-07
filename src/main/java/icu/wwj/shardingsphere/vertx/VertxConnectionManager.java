@@ -75,6 +75,19 @@ public class VertxConnectionManager implements ExecutorVertxConnectionManager {
         return CompositeFuture.all(result).mapEmpty();
     }
     
+    public Future<Void> close() {
+        return clearCachedConnections().compose(unused -> closePools());
+    }
+    
+    @SuppressWarnings("rawtypes")
+    private Future<Void> closePools() {
+        List<Future> poolCloseFutures = new ArrayList<>(poolMap.size());
+        for (Pool each : poolMap.values()) {
+            poolCloseFutures.add(each.close());
+        }
+        return CompositeFuture.all(poolCloseFutures).mapEmpty();
+    }
+    
     private Pool createPool(final String dataSourceName) {
         // TODO Support other DataSource
         HikariDataSource dataSource = (HikariDataSource) contextManager.getDataSourceMap("logic_db").get(dataSourceName);
@@ -88,7 +101,7 @@ public class VertxConnectionManager implements ExecutorVertxConnectionManager {
             connectOptions = connectOptions.setPassword(dataSource.getPassword());
         }
         PoolOptions poolOptions = new PoolOptions().setMaxSize(dataSource.getMaximumPoolSize()).setIdleTimeout((int) dataSource.getIdleTimeout()).setIdleTimeoutUnit(TimeUnit.MILLISECONDS)
-                .setConnectionTimeout((int) dataSource.getConnectionTimeout()).setConnectionTimeoutUnit(TimeUnit.MILLISECONDS);
+                .setConnectionTimeout((int) dataSource.getConnectionTimeout()).setConnectionTimeoutUnit(TimeUnit.MILLISECONDS).setShared(true).setName(dataSourceName);
         return PgPool.pool(vertx, connectOptions, poolOptions);
     }
 }

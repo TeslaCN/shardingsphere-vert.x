@@ -1,10 +1,12 @@
 package icu.wwj.shardingsphere.vertx;
 
 import io.vertx.core.AsyncResult;
+import io.vertx.core.CompositeFuture;
 import io.vertx.core.Context;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
+import io.vertx.core.impl.CloseFuture;
 import io.vertx.sqlclient.Pool;
 import io.vertx.sqlclient.PrepareOptions;
 import io.vertx.sqlclient.PreparedQuery;
@@ -15,7 +17,11 @@ import io.vertx.sqlclient.SqlConnection;
 import lombok.RequiredArgsConstructor;
 import org.apache.shardingsphere.mode.manager.ContextManager;
 
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
 @RequiredArgsConstructor
@@ -25,7 +31,7 @@ public class ShardingSpherePool implements Pool {
     
     private final ContextManager contextManager;
     
-    private final AtomicInteger size = new AtomicInteger();
+    private final Set<SqlConnection> openedConnections = Collections.newSetFromMap(new ConcurrentHashMap<>());
     
     @Override
     public void getConnection(final Handler<AsyncResult<SqlConnection>> handler) {
@@ -34,7 +40,11 @@ public class ShardingSpherePool implements Pool {
     
     @Override
     public Future<SqlConnection> getConnection() {
-        return Future.succeededFuture(new ShardingSphereConnection(vertx, contextManager));
+        CloseFuture closeFuture = new CloseFuture();
+        ShardingSphereConnection result = new ShardingSphereConnection(vertx, contextManager, closeFuture);
+        closeFuture.future().onComplete(__ -> openedConnections.remove(result));
+        openedConnections.add(result);
+        return Future.succeededFuture(result);
     }
     
     @Override
@@ -54,12 +64,17 @@ public class ShardingSpherePool implements Pool {
     
     @Override
     public void close(final Handler<AsyncResult<Void>> handler) {
-        
+        close().onComplete(handler);
     }
     
+    @SuppressWarnings("rawtypes")
     @Override
     public Future<Void> close() {
-        return null;
+        List<Future> connectionCloseFutures = new ArrayList<>(openedConnections.size());
+        for (SqlConnection each : openedConnections) {
+            connectionCloseFutures.add(each.close());
+        }
+        return CompositeFuture.all(connectionCloseFutures).mapEmpty();
     }
     
     @Override
@@ -74,6 +89,6 @@ public class ShardingSpherePool implements Pool {
     
     @Override
     public int size() {
-        return size.get();
+        return openedConnections.size();
     }
 }

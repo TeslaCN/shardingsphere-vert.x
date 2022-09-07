@@ -4,6 +4,7 @@ import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
+import io.vertx.core.impl.CloseFuture;
 import io.vertx.sqlclient.PrepareOptions;
 import io.vertx.sqlclient.PreparedQuery;
 import io.vertx.sqlclient.PreparedStatement;
@@ -19,22 +20,22 @@ import org.apache.shardingsphere.mode.manager.ContextManager;
 
 public class ShardingSphereConnection implements SqlConnection {
     
-    private final Vertx vertx;
-    
     private final ContextManager contextManager;
     
     @Getter
     private final VertxConnectionManager connectionManager;
+    
+    private final CloseFuture closeFuture;
     
     @Getter
     private final ConnectionContext connectionContext = new ConnectionContext();
     
     private final ShardingSphereTransaction transaction = new ShardingSphereTransaction(this);
     
-    public ShardingSphereConnection(final Vertx vertx, final ContextManager contextManager) {
-        this.vertx = vertx;
+    public ShardingSphereConnection(final Vertx vertx, final ContextManager contextManager, final CloseFuture closeFuture) {
         this.contextManager = contextManager;
         connectionManager = new VertxConnectionManager(vertx, contextManager, transaction);
+        this.closeFuture = closeFuture;
     }
     
     @Override
@@ -106,7 +107,8 @@ public class ShardingSphereConnection implements SqlConnection {
     
     @Override
     public Future<Void> close() {
-        return Future.succeededFuture();
+        return (TransactionStatus.NOT_IN_TRANSACTION == transaction.getTransactionStatus() ? connectionManager.close()
+                : transaction.rollback().compose(unused -> connectionManager.close())).eventually(__ -> closeFuture.close());
     }
     
     @Override
