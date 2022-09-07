@@ -34,10 +34,6 @@
                     <groupId>org.apache.shardingsphere</groupId>
                     <artifactId>shardingsphere-sharding-nanoid</artifactId>
                 </exclusion>
-                <exclusion>
-                    <groupId>org.apache.shardingsphere</groupId>
-                    <artifactId>shardingsphere-schedule-core</artifactId>
-                </exclusion>
             </exclusions>
         </dependency>
         <dependency>
