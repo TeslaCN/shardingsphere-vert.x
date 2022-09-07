@@ -4,6 +4,7 @@ import io.vertx.core.AsyncResult;
 import io.vertx.core.CompositeFuture;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
+import io.vertx.core.Vertx;
 import io.vertx.sqlclient.PreparedQuery;
 import io.vertx.sqlclient.Row;
 import io.vertx.sqlclient.RowSet;
@@ -55,11 +56,15 @@ public class ShardingSpherePreparedQuery implements PreparedQuery<RowSet<Row>> {
     
     private final KernelProcessor kernelProcessor = new KernelProcessor();
     
+    private final Vertx vertx;
+    
     private final ShardingSphereConnection connection;
     
     private final MetaDataContexts metaDataContexts;
     
     private final String sql;
+    
+    private final boolean useWorkerPool;
     
     private final SQLStatementContext<?> sqlStatementContext;
     
@@ -67,10 +72,12 @@ public class ShardingSpherePreparedQuery implements PreparedQuery<RowSet<Row>> {
     
     private Map<String, Integer> columnLabelAndIndexMap;
     
-    public ShardingSpherePreparedQuery(final ShardingSphereConnection connection, final MetaDataContexts metaDataContexts, final String sql) {
+    public ShardingSpherePreparedQuery(final Vertx vertx, final ShardingSphereConnection connection, final MetaDataContexts metaDataContexts, final String sql, final boolean useWorkerPool) {
+        this.vertx = vertx;
         this.connection = connection;
         this.metaDataContexts = metaDataContexts;
         this.sql = sql;
+        this.useWorkerPool = useWorkerPool;
         SQLParserRule sqlParserRule = metaDataContexts.getMetaData().getGlobalRuleMetaData().getSingleRule(SQLParserRule.class);
         ShardingSphereSQLParserEngine sqlParserEngine = sqlParserRule.getSQLParserEngine(
                 DatabaseTypeEngine.getTrunkDatabaseTypeName(metaDataContexts.getMetaData().getDatabase("logic_db").getResource().getDatabaseType()));
@@ -84,16 +91,45 @@ public class ShardingSpherePreparedQuery implements PreparedQuery<RowSet<Row>> {
         execute(tuple).onComplete(handler);
     }
     
-    @SuppressWarnings({"unchecked", "rawtypes"})
-    @SneakyThrows(SQLException.class)
     @Override
     public Future<RowSet<Row>> execute(final Tuple tuple) {
+        return useWorkerPool ? vertx.<ExecutionGroupContext<VertxExecutionUnit>>executeBlocking(promise -> promise.complete(createExecutionGroupContext(tuple))).compose(this::execute0)
+                : execute0(createExecutionGroupContext(tuple));
+    }
+    
+    @SneakyThrows(SQLException.class)
+    private ExecutionGroupContext<VertxExecutionUnit> createExecutionGroupContext(final Tuple tuple) {
         setupParameters(tuple);
         ExecutionContext executionContext = createExecutionContext();
         Collection<ShardingSphereRule> rules = metaDataContexts.getMetaData().getDatabase("logic_db").getRuleMetaData().getRules();
         DriverExecutionPrepareEngine<VertxExecutionUnit, Future<? extends SqlClient>> prepareEngine = new DriverExecutionPrepareEngine<>(
                 "Vert.x", 1, connection.getConnectionManager(), UnsupportedExecutorVertxStatementManager.INSTANCE, new VertxExecutionContext(), rules, sqlStatementContext.getDatabaseType());
-        ExecutionGroupContext<VertxExecutionUnit> executionGroupContext = prepareEngine.prepare(executionContext.getRouteContext(), executionContext.getExecutionUnits());
+        return prepareEngine.prepare(executionContext.getRouteContext(), executionContext.getExecutionUnits());
+    }
+    
+    private void setupParameters(final Tuple tuple) {
+        List<Object> parameters = new ArrayList<>(tuple.size());
+        for (int i = 0; i < tuple.size(); i++) {
+            parameters.add(tuple.getValue(i));
+        }
+        queryContext.getParameters().clear();
+        queryContext.getParameters().addAll(parameters);
+        if (sqlStatementContext instanceof ParameterAware) {
+            ((ParameterAware) sqlStatementContext).setUpParameters(parameters);
+        }
+    }
+    
+    private ExecutionContext createExecutionContext() {
+        String databaseName = "logic_db";
+        SQLCheckEngine.check(queryContext.getSqlStatementContext(), queryContext.getParameters(),
+                metaDataContexts.getMetaData().getDatabase(databaseName).getRuleMetaData().getRules(),
+                databaseName, metaDataContexts.getMetaData().getDatabases(), null);
+        return kernelProcessor.generateExecutionContext(queryContext, metaDataContexts.getMetaData().getDatabase(databaseName),
+                metaDataContexts.getMetaData().getGlobalRuleMetaData(), metaDataContexts.getMetaData().getProps(), connection.getConnectionContext());
+    }
+    
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private Future<RowSet<Row>> execute0(final ExecutionGroupContext<VertxExecutionUnit> executionGroupContext) {
         List<Future<ExecuteResult>> executeResults = ShardingSphereVertxExecutor.execute(executionGroupContext, new ExecutorCallback<VertxExecutionUnit, Future<ExecuteResult>>() {
             
             @Override
@@ -119,7 +155,7 @@ public class ShardingSpherePreparedQuery implements PreparedQuery<RowSet<Row>> {
             MergeEngine mergeEngine = new MergeEngine(metaDataContexts.getMetaData().getDatabase("logic_db"),
                     metaDataContexts.getMetaData().getProps(), connection.getConnectionContext());
             try {
-                return fromMergeResult(results, mergeEngine.merge(results, executionContext.getSqlStatementContext()));
+                return fromMergeResult(results, mergeEngine.merge(results, sqlStatementContext));
             } catch (SQLException e) {
                 throw new RuntimeException(e);
             }
@@ -144,39 +180,24 @@ public class ShardingSpherePreparedQuery implements PreparedQuery<RowSet<Row>> {
         return new ShardingSphereRowSet(queryResults.get(0),columnLabelAndIndexMap, mergedResult, size);
     }
     
-    private void setupParameters(final Tuple tuple) {
-        List<Object> parameters = new ArrayList<>(tuple.size());
-        for (int i = 0; i < tuple.size(); i++) {
-            parameters.add(tuple.getValue(i));
-        }
-        queryContext.getParameters().clear();
-        queryContext.getParameters().addAll(parameters);
-        if (sqlStatementContext instanceof ParameterAware) {
-            ((ParameterAware) sqlStatementContext).setUpParameters(parameters);
-        }
-    }
-    
-    private ExecutionContext createExecutionContext() {
-        String databaseName = "logic_db";
-        SQLCheckEngine.check(queryContext.getSqlStatementContext(), queryContext.getParameters(),
-                metaDataContexts.getMetaData().getDatabase(databaseName).getRuleMetaData().getRules(),
-                databaseName, metaDataContexts.getMetaData().getDatabases(), null);
-        return kernelProcessor.generateExecutionContext(queryContext, metaDataContexts.getMetaData().getDatabase(databaseName),
-                metaDataContexts.getMetaData().getGlobalRuleMetaData(), metaDataContexts.getMetaData().getProps(), connection.getConnectionContext());
-    }
-    
     @Override
     public void executeBatch(final List<Tuple> batch, final Handler<AsyncResult<RowSet<Row>>> handler) {
         executeBatch(batch).onComplete(handler);
     }
     
-    @SneakyThrows(SQLException.class)
     @Override
     public Future<RowSet<Row>> executeBatch(final List<Tuple> batch) {
         if (null == batch || batch.isEmpty()) {
             return Future.failedFuture(new IllegalArgumentException("Empty batch"));
         }
         Map<ExecutionUnit, List<Tuple>> executionUnitParameters = new HashMap<>();
+        return useWorkerPool ? vertx.<ExecutionGroupContext<VertxExecutionUnit>>executeBlocking(promise -> promise.complete(createBatchExecutionGroupContext(batch, executionUnitParameters)))
+                .compose(executionGroupContext -> executeBatchedPreparedStatements(executionGroupContext, executionUnitParameters))
+                : executeBatchedPreparedStatements(createBatchExecutionGroupContext(batch, executionUnitParameters), executionUnitParameters);
+    }
+    
+    @SneakyThrows(SQLException.class)
+    private ExecutionGroupContext<VertxExecutionUnit> createBatchExecutionGroupContext(final List<Tuple> batch, final Map<ExecutionUnit, List<Tuple>> executionUnitParameters) {
         Iterator<Tuple> tupleIterator = batch.iterator();
         Tuple tuple = tupleIterator.next();
         List<Object> firstGroupOfParameter = fromTuple(tuple);
@@ -198,8 +219,7 @@ public class ShardingSpherePreparedQuery implements PreparedQuery<RowSet<Row>> {
                 executionUnitParameters.computeIfAbsent(each, unused -> new LinkedList<>()).add(tuple);
             }
         }
-        ExecutionGroupContext<VertxExecutionUnit> executionGroupContext = addBatchedParametersToPreparedStatements(executionContext, executionUnitParameters.keySet());
-        return executeBatchedPreparedStatements(executionGroupContext, executionUnitParameters);
+        return addBatchedParametersToPreparedStatements(executionContext, executionUnitParameters.keySet());
     }
     
     private List<Object> fromTuple(final Tuple tuple) {

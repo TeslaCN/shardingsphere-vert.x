@@ -33,6 +33,8 @@ public class ShardingSpherePool implements Pool {
     
     private final Set<SqlConnection> openedConnections = Collections.newSetFromMap(new ConcurrentHashMap<>());
     
+    private final boolean useWorkerPool;
+    
     @Override
     public void getConnection(final Handler<AsyncResult<SqlConnection>> handler) {
         getConnection().onComplete(handler);
@@ -41,7 +43,7 @@ public class ShardingSpherePool implements Pool {
     @Override
     public Future<SqlConnection> getConnection() {
         CloseFuture closeFuture = new CloseFuture();
-        ShardingSphereConnection result = new ShardingSphereConnection(vertx, contextManager, closeFuture);
+        ShardingSphereConnection result = new ShardingSphereConnection(vertx, contextManager, closeFuture, useWorkerPool);
         closeFuture.future().onComplete(__ -> openedConnections.remove(result));
         openedConnections.add(result);
         return Future.succeededFuture(result);

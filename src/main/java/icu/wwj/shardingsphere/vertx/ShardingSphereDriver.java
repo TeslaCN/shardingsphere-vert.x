@@ -77,7 +77,7 @@ public class ShardingSphereDriver implements Driver {
         for (DataSource each : dataSourceMap.values()) {
             new DataSourcePoolDestroyer(each).asyncDestroy();
         }
-        return new ShardingSpherePool(vertx, contextManager);
+        return new ShardingSpherePool(vertx, contextManager, shardingSphereOption.isUseWorkerPool());
     }
     
     private ContextManager createContextManager(final String databaseName, final Map<String, DataSource> dataSourceMap,
@@ -103,7 +103,7 @@ public class ShardingSphereDriver implements Driver {
         if (!uri.startsWith(URI_PREFIX_SHARDINGSPHERE)) {
             return null;
         }
-        String path = uri.substring(URI_PREFIX_SHARDINGSPHERE.length());
+        String path = uri.substring(URI_PREFIX_SHARDINGSPHERE.length(), uri.contains("?") ? uri.indexOf('?') : uri.length());
         byte[] result;
         if (path.startsWith(CLASSPATH_PREFIX)) {
             String classpath = path.substring(CLASSPATH_PREFIX.length());
@@ -115,7 +115,17 @@ public class ShardingSphereDriver implements Driver {
         } else {
             result = Files.readAllBytes(Paths.get(path));
         }
-        return new ShardingSphereOptions(result);
+        boolean useWorkerPool = false;
+        if (uri.lastIndexOf('?') > -1) {
+            String parameters = uri.substring(uri.lastIndexOf('?') + 1);
+            for (String pair : parameters.split("&")) {
+                String[] split = pair.split("=");
+                if ("useWorkerPool".equals(split[0])) {
+                    useWorkerPool = Boolean.parseBoolean(split[1]);
+                }
+            }
+        }
+        return new ShardingSphereOptions(result, useWorkerPool);
     }
     
     private byte[] readInputStream(final InputStream in) throws IOException {

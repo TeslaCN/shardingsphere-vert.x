@@ -9,4 +9,6 @@ import lombok.RequiredArgsConstructor;
 public class ShardingSphereOptions extends SqlConnectOptions {
     
     private final byte[] yamlConfigurationBytes;
+    
+    private final boolean useWorkerPool;
 }

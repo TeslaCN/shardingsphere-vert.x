@@ -20,6 +20,8 @@ import org.apache.shardingsphere.mode.manager.ContextManager;
 
 public class ShardingSphereConnection implements SqlConnection {
     
+    private final Vertx vertx;
+    
     private final ContextManager contextManager;
     
     @Getter
@@ -27,15 +29,19 @@ public class ShardingSphereConnection implements SqlConnection {
     
     private final CloseFuture closeFuture;
     
+    private final boolean useWorkerPool;
+    
     @Getter
     private final ConnectionContext connectionContext = new ConnectionContext();
     
     private final ShardingSphereTransaction transaction = new ShardingSphereTransaction(this);
     
-    public ShardingSphereConnection(final Vertx vertx, final ContextManager contextManager, final CloseFuture closeFuture) {
+    public ShardingSphereConnection(final Vertx vertx, final ContextManager contextManager, final CloseFuture closeFuture, final boolean useWorkerPool) {
+        this.vertx = vertx;
         this.contextManager = contextManager;
         connectionManager = new VertxConnectionManager(vertx, contextManager, transaction);
         this.closeFuture = closeFuture;
+        this.useWorkerPool = useWorkerPool;
     }
     
     @Override
@@ -92,12 +98,12 @@ public class ShardingSphereConnection implements SqlConnection {
     
     @Override
     public PreparedQuery<RowSet<Row>> preparedQuery(final String sql) {
-        return new ShardingSpherePreparedQuery(this, contextManager.getMetaDataContexts(), sql);
+        return new ShardingSpherePreparedQuery(vertx, this, contextManager.getMetaDataContexts(), sql, useWorkerPool);
     }
     
     @Override
     public PreparedQuery<RowSet<Row>> preparedQuery(final String sql, final PrepareOptions options) {
-        return new ShardingSpherePreparedQuery(this, contextManager.getMetaDataContexts(), sql);
+        return new ShardingSpherePreparedQuery(vertx, this, contextManager.getMetaDataContexts(), sql, useWorkerPool);
     }
     
     @Override
