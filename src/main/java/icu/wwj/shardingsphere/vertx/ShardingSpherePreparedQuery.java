@@ -93,8 +93,8 @@ public class ShardingSpherePreparedQuery implements PreparedQuery<RowSet<Row>> {
     
     @Override
     public Future<RowSet<Row>> execute(final Tuple tuple) {
-        return useWorkerPool ? vertx.<ExecutionGroupContext<VertxExecutionUnit>>executeBlocking(promise -> promise.complete(createExecutionGroupContext(tuple))).compose(this::execute0)
-                : execute0(createExecutionGroupContext(tuple));
+        return !useWorkerPool ? execute0(createExecutionGroupContext(tuple))
+                : vertx.<ExecutionGroupContext<VertxExecutionUnit>>executeBlocking(promise -> promise.complete(createExecutionGroupContext(tuple)), false).compose(this::execute0);
     }
     
     @SneakyThrows(SQLException.class)
@@ -191,9 +191,9 @@ public class ShardingSpherePreparedQuery implements PreparedQuery<RowSet<Row>> {
             return Future.failedFuture(new IllegalArgumentException("Empty batch"));
         }
         Map<ExecutionUnit, List<Tuple>> executionUnitParameters = new HashMap<>();
-        return useWorkerPool ? vertx.<ExecutionGroupContext<VertxExecutionUnit>>executeBlocking(promise -> promise.complete(createBatchExecutionGroupContext(batch, executionUnitParameters)))
-                .compose(executionGroupContext -> executeBatchedPreparedStatements(executionGroupContext, executionUnitParameters))
-                : executeBatchedPreparedStatements(createBatchExecutionGroupContext(batch, executionUnitParameters), executionUnitParameters);
+        return !useWorkerPool ? executeBatchedPreparedStatements(createBatchExecutionGroupContext(batch, executionUnitParameters), executionUnitParameters)
+                : vertx.<ExecutionGroupContext<VertxExecutionUnit>>executeBlocking(promise -> promise.complete(createBatchExecutionGroupContext(batch, executionUnitParameters)), false)
+                .compose(executionGroupContext -> executeBatchedPreparedStatements(executionGroupContext, executionUnitParameters));
     }
     
     @SneakyThrows(SQLException.class)
