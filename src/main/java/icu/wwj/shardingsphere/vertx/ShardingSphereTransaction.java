@@ -43,7 +43,7 @@ public class ShardingSphereTransaction implements Transaction {
         }
         List<Future> commitFutures = new ArrayList<>(openedTransactions.size());
         for (Transaction each : openedTransactions) {
-            commitFutures.add(each.rollback());
+            commitFutures.add(each.commit());
         }
         return CompositeFuture.all(commitFutures).compose(unused -> connection.getConnectionManager().clearCachedConnections()).eventually(unused -> {
             openedTransactions.clear();
