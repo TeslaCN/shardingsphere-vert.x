@@ -20,6 +20,7 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
@@ -61,6 +62,10 @@ public class VertxConnectionManager implements ExecutorVertxConnectionManager {
             result.add(connection);
         }
         return result;
+    }
+    
+    public Set<String> getCachedConnectionsDataSourceNames() {
+        return cachedConnections.keySet();
     }
     
     @SuppressWarnings("rawtypes")

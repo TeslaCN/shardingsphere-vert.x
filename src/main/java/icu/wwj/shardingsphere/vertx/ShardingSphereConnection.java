@@ -28,7 +28,7 @@ public class ShardingSphereConnection implements SqlConnection {
     private final CloseFuture closeFuture;
     
     @Getter
-    private final ConnectionContext connectionContext = new ConnectionContext();
+    private final ConnectionContext connectionContext;
     
     private final ShardingSphereTransaction transaction = new ShardingSphereTransaction(this);
     
@@ -36,6 +36,7 @@ public class ShardingSphereConnection implements SqlConnection {
         this.contextManager = contextManager;
         connectionManager = new VertxConnectionManager(vertx, contextManager, transaction);
         this.closeFuture = closeFuture;
+        connectionContext = new ConnectionContext(connectionManager::getCachedConnectionsDataSourceNames);
     }
     
     @Override
