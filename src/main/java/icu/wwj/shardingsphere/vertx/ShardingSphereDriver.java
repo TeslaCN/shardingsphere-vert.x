@@ -87,7 +87,7 @@ public class ShardingSphereDriver implements Driver {
         Collection<RuleConfiguration> databaseRuleConfigs = new LinkedList<>(ruleConfigs);
         databaseRuleConfigs.removeAll(globalRuleConfigs);
         ContextManagerBuilderParameter parameter = new ContextManagerBuilderParameter(null, Collections.singletonMap(databaseName,
-                new DataSourceProvidedDatabaseConfiguration(dataSourceMap, databaseRuleConfigs)), globalRuleConfigs, props, Collections.emptyList(), instanceMetaData);
+                new DataSourceProvidedDatabaseConfiguration(dataSourceMap, databaseRuleConfigs)), globalRuleConfigs, props, Collections.emptyList(), instanceMetaData, false);
         // TODO Supports standalone mode only for now
         return ContextManagerBuilderFactory.getInstance(null).build(parameter);
     }

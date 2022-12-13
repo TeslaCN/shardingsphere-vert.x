@@ -18,6 +18,7 @@ import org.apache.shardingsphere.infra.binder.aware.ParameterAware;
 import org.apache.shardingsphere.infra.binder.statement.SQLStatementContext;
 import org.apache.shardingsphere.infra.config.props.ConfigurationPropertyKey;
 import org.apache.shardingsphere.infra.context.kernel.KernelProcessor;
+import org.apache.shardingsphere.infra.database.type.DatabaseType;
 import org.apache.shardingsphere.infra.database.type.DatabaseTypeEngine;
 import org.apache.shardingsphere.infra.executor.check.SQLCheckEngine;
 import org.apache.shardingsphere.infra.executor.kernel.model.ExecutionGroupContext;
@@ -33,6 +34,7 @@ import org.apache.shardingsphere.infra.executor.sql.prepare.driver.DriverExecuti
 import org.apache.shardingsphere.infra.executor.sql.prepare.driver.vertx.VertxExecutionContext;
 import org.apache.shardingsphere.infra.merge.MergeEngine;
 import org.apache.shardingsphere.infra.merge.result.MergedResult;
+import org.apache.shardingsphere.infra.metadata.database.ShardingSphereDatabase;
 import org.apache.shardingsphere.infra.parser.ShardingSphereSQLParserEngine;
 import org.apache.shardingsphere.infra.rule.ShardingSphereRule;
 import org.apache.shardingsphere.mode.metadata.MetaDataContexts;
@@ -42,6 +44,7 @@ import org.apache.shardingsphere.sql.parser.sql.common.statement.SQLStatement;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedList;
@@ -73,9 +76,9 @@ public class ShardingSpherePreparedQuery implements PreparedQuery<RowSet<Row>> {
         this.sql = sql;
         SQLParserRule sqlParserRule = metaDataContexts.getMetaData().getGlobalRuleMetaData().getSingleRule(SQLParserRule.class);
         ShardingSphereSQLParserEngine sqlParserEngine = sqlParserRule.getSQLParserEngine(
-                DatabaseTypeEngine.getTrunkDatabaseTypeName(metaDataContexts.getMetaData().getDatabase("logic_db").getResource().getDatabaseType()));
+                DatabaseTypeEngine.getTrunkDatabaseTypeName(metaDataContexts.getMetaData().getDatabase("logic_db").getProtocolType()));
         SQLStatement sqlStatement = sqlParserEngine.parse(sql, true);
-        sqlStatementContext = SQLStatementContextFactory.newInstance(metaDataContexts.getMetaData().getDatabases(), sqlStatement, "logic_db");
+        sqlStatementContext = SQLStatementContextFactory.newInstance(metaDataContexts.getMetaData(), sqlStatement, "logic_db");
         queryContext = new QueryContext(sqlStatementContext, sql, new ArrayList<>());
     }
     
@@ -90,9 +93,11 @@ public class ShardingSpherePreparedQuery implements PreparedQuery<RowSet<Row>> {
     public Future<RowSet<Row>> execute(final Tuple tuple) {
         setupParameters(tuple);
         ExecutionContext executionContext = createExecutionContext();
-        Collection<ShardingSphereRule> rules = metaDataContexts.getMetaData().getDatabase("logic_db").getRuleMetaData().getRules();
+        ShardingSphereDatabase database = metaDataContexts.getMetaData().getDatabase("logic_db");
+        Collection<ShardingSphereRule> rules = database.getRuleMetaData().getRules();
+        Map<String, DatabaseType> storageTypes = database.getResourceMetaData().getStorageTypes();
         DriverExecutionPrepareEngine<VertxExecutionUnit, Future<? extends SqlClient>> prepareEngine = new DriverExecutionPrepareEngine<>(
-                "Vert.x", 1, connection.getConnectionManager(), UnsupportedExecutorVertxStatementManager.INSTANCE, new VertxExecutionContext(), rules, sqlStatementContext.getDatabaseType());
+                "Vert.x", 1, connection.getConnectionManager(), UnsupportedExecutorVertxStatementManager.INSTANCE, new VertxExecutionContext(), rules, storageTypes);
         ExecutionGroupContext<VertxExecutionUnit> executionGroupContext = prepareEngine.prepare(executionContext.getRouteContext(), executionContext.getExecutionUnits());
         List<Future<ExecuteResult>> executeResults = ShardingSphereVertxExecutor.execute(executionGroupContext, new ExecutorCallback<VertxExecutionUnit, Future<ExecuteResult>>() {
             
@@ -116,7 +121,7 @@ public class ShardingSpherePreparedQuery implements PreparedQuery<RowSet<Row>> {
             if (results.get(0) instanceof UpdateResult) {
                 return fromUpdateResult(results);
             }
-            MergeEngine mergeEngine = new MergeEngine(metaDataContexts.getMetaData().getDatabase("logic_db"),
+            MergeEngine mergeEngine = new MergeEngine(database,
                     metaDataContexts.getMetaData().getProps(), connection.getConnectionContext());
             try {
                 return fromMergeResult(results, mergeEngine.merge(results, executionContext.getSqlStatementContext()));
@@ -220,10 +225,11 @@ public class ShardingSpherePreparedQuery implements PreparedQuery<RowSet<Row>> {
     }
     
     private ExecutionGroupContext<VertxExecutionUnit> addBatchedParametersToPreparedStatements(final ExecutionContext executionContext, final Set<ExecutionUnit> executionUnits) throws SQLException {
-        Collection<ShardingSphereRule> rules = metaDataContexts.getMetaData().getDatabase("logic_db").getRuleMetaData().getRules();
+        ShardingSphereDatabase database = metaDataContexts.getMetaData().getDatabase("logic_db");
+        Collection<ShardingSphereRule> rules = database.getRuleMetaData().getRules();
         DriverExecutionPrepareEngine<VertxExecutionUnit, Future<? extends SqlClient>> prepareEngine = new DriverExecutionPrepareEngine<>(
                 "Vert.x", metaDataContexts.getMetaData().getProps().<Integer>getValue(ConfigurationPropertyKey.MAX_CONNECTIONS_SIZE_PER_QUERY),
-                connection.getConnectionManager(), UnsupportedExecutorVertxStatementManager.INSTANCE, new VertxExecutionContext(), rules, sqlStatementContext.getDatabaseType());
+                connection.getConnectionManager(), UnsupportedExecutorVertxStatementManager.INSTANCE, new VertxExecutionContext(), rules, database.getResourceMetaData().getStorageTypes());
         return prepareEngine.prepare(executionContext.getRouteContext(), executionUnits);
     }
     
