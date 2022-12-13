@@ -100,7 +100,7 @@ public class VertxConnectionManager implements ExecutorVertxConnectionManager {
         if (!Strings.isNullOrEmpty(dataSource.getPassword())) {
             connectOptions = connectOptions.setPassword(dataSource.getPassword());
         }
-        PoolOptions poolOptions = new PoolOptions().setMaxSize(dataSource.getMaximumPoolSize()).setIdleTimeout((int) dataSource.getIdleTimeout()).setIdleTimeoutUnit(TimeUnit.MILLISECONDS)
+        PoolOptions poolOptions = new PoolOptions().setMaxSize(dataSource.getMaximumPoolSize()).setMaxWaitQueueSize(0).setIdleTimeout((int) dataSource.getIdleTimeout()).setIdleTimeoutUnit(TimeUnit.MILLISECONDS)
                 .setConnectionTimeout((int) dataSource.getConnectionTimeout()).setConnectionTimeoutUnit(TimeUnit.MILLISECONDS).setShared(true).setName(dataSourceName);
         return PgPool.pool(vertx, connectOptions, poolOptions);
     }
