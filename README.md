@@ -36,7 +36,7 @@ rules:
 ### Step 2: Create Vert.x Pool & Enjoy ShardingSphere-Vert.x
 
 ```java
-String uri = "shardingsphere:/home/wuweijie/projects/tpcc-vertx/config-bmsql-sharding-range.yaml";
+String uri = "shardingsphere:/path/to/your/config-sharding.yaml";
 Vertx vertx = Vertx.vertx(new VertxOptions(/* Your Vert.x options */));
 // cachePreparedStatements could not be specified in URI. https://github.com/eclipse-vertx/vertx-sql-client/issues/664
 SqlConnectOptions connectOptions = SqlConnectOptions.fromUri(uri).setCachePreparedStatements(true);
